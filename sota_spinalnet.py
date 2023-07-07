@@ -7,7 +7,7 @@ import mindspore.nn as nn
 import mindspore.dataset.vision as vision
 from mindspore.dataset import transforms
 from mindspore import dtype as mstype
-from mindspore.train import LossMonitor, Model
+from mindspore.train import LossMonitor, TimeMonitor, Model, CheckpointConfig, ModelCheckpoint
 from mindcv import create_dataset
 from mindcv.models import create_model
 
@@ -51,7 +51,6 @@ num_ftrs = resnet101.classifier.in_channels
 half_in_size = round(num_ftrs / 2)
 layer_width = 20 #Small for Resnet, large for VGG
 num_class=100
-
 class SpinalNet_ResNet(nn.Cell):
     def __init__(self):
         super(SpinalNet_ResNet, self).__init__()
@@ -76,23 +75,21 @@ class SpinalNet_ResNet(nn.Cell):
         x2 = self.fc_spinal_layer2(mindspore.ops.cat([ x[:,half_in_size:2*half_in_size], x1], axis=1))
         x3 = self.fc_spinal_layer3(mindspore.ops.cat([ x[:,0:half_in_size], x2], axis=1))
         x4 = self.fc_spinal_layer4(mindspore.ops.cat([ x[:,half_in_size:2*half_in_size], x3], axis=1))
-        
-        
+
         x = mindspore.ops.cat([x1, x2], axis=1)
         x = mindspore.ops.cat([x, x3], axis=1)
         x = mindspore.ops.cat([x, x4], axis=1)
-
-        
         x = self.fc_out(x)
         return x
 
 
 resnet101.classifier = SpinalNet_ResNet()
-
-
 loss_fn = nn.CrossEntropyLoss()
 optimizer_ft = nn.SGD(params=resnet101.trainable_params(), learning_rate=0.01, momentum=0.9)
 model = Model(resnet101, loss_fn, optimizer_ft, {"accuracy"})
 
-loss_monitor = LossMonitor(1)
-model.fit(20, cifar100_train, cifar100_test, callbacks=[loss_monitor])
+loss_monitor = LossMonitor(100)
+time_monitor = TimeMonitor(100)
+ckpt_cfg = CheckpointConfig(save_checkpoint_steps=100, append_info=['epoch_num'])
+ckpt_monitor = ModelCheckpoint(prefix='cifar100_spinalnet', directory='./checkpoint', config=ckpt_cfg)
+model.fit(20, cifar100_train, cifar100_test, callbacks=[loss_monitor, time_monitor, ckpt_monitor])
